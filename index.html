@@ -1,0 +1,158 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOVA AI - Personal Assistant</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#080b16;color:#fff;font-family:Arial,sans-serif;height:100dvh;display:flex;flex-direction:column}
+header{padding:18px 16px;background:#111629;border-bottom:1px solid #252d43;display:flex;align-items:center;gap:12px}
+.logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#765cff,#00c8ff);display:grid;place-items:center;font-size:23px;font-weight:bold}
+.brand{font-size:21px;font-weight:bold}
+.sub{font-size:12px;color:#9da9c4;margin-top:4px}
+main{flex:1;overflow:auto;padding:20px 14px;display:flex;flex-direction:column;gap:15px}
+.welcome{text-align:center;margin:auto 0}
+.welcome h1{font-size:30px;background:linear-gradient(90deg,#a78bfa,#38bdf8);background-clip:text;color:transparent}
+.welcome p{color:#aab4cc;line-height:1.6}
+.message{max-width:88%;padding:13px 15px;border-radius:17px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.user{align-self:flex-end;background:#5140a8}
+.bot{align-self:flex-start;background:#171f34;border:1px solid #293550}
+#status{font-size:12px;color:#aab4cc;text-align:center;min-height:17px}
+footer{padding:12px;background:#111629;border-top:1px solid #252d43}
+.inputrow{display:flex;gap:8px;align-items:center}
+input{flex:1;min-width:0;background:#202940;border:1px solid #35415e;color:white;border-radius:14px;padding:14px;font-size:15px;outline:none}
+button{border:0;border-radius:13px;padding:13px;background:#7258ed;color:white;font-size:17px;cursor:pointer}
+button:disabled{opacity:.5}
+.voice{background:#26334c}
+.note{text-align:center;color:#7886a3;font-size:11px;margin-top:9px}
+</style>
+</head>
+<body>
+<header>
+<div class="logo">N</div>
+<div>
+<div class="brand">NOVA AI</div>
+<div class="sub">Your Personal Intelligent Assistant</div>
+</div>
+</header>
+
+<main id="chat">
+<div class="welcome" id="welcome">
+<div style="font-size:48px">✦</div>
+<h1>Hello! I'm NOVA.</h1>
+<p>Your intelligent personal assistant.<br>Ask me anything. Let's explore ideas together!</p>
+</div>
+</main>
+
+<div id="status"></div>
+
+<footer>
+<div class="inputrow">
+<button class="voice" id="mic" title="Voice input">🎤</button>
+<input id="prompt" placeholder="Message NOVA..." autocomplete="off">
+<button id="send" title="Send">➤</button>
+<button class="voice" id="speak" title="Toggle voice replies">🔊</button>
+</div>
+<div class="note">NOVA AI • Powered by Gemini • Voice supported on compatible browsers</div>
+</footer>
+
+<script>
+const chat=document.getElementById("chat");
+const input=document.getElementById("prompt");
+const status=document.getElementById("status");
+const send=document.getElementById("send");
+const mic=document.getElementById("mic");
+const speak=document.getElementById("speak");
+let history=[];
+let voiceEnabled=true;
+
+function addMessage(text,type){
+ document.getElementById("welcome")?.remove();
+ const div=document.createElement("div");
+ div.className="message "+type;
+ div.textContent=text;
+ chat.appendChild(div);
+ chat.scrollTop=chat.scrollHeight;
+ return div;
+}
+
+async function sendMessage(){
+ const message=input.value.trim();
+ if(!message||send.disabled)return;
+
+ input.value="";
+ addMessage(message,"user");
+ history.push({role:"user",content:message});
+ send.disabled=true;
+ status.textContent="NOVA is thinking...";
+
+ try{
+  const response=await fetch("/api/chat",{
+   method:"POST",
+   headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({messages:history})
+  });
+  const data=await response.json();
+  if(!response.ok)throw new Error(data.error||"Something went wrong.");
+
+  const reply=data.reply||"I couldn't generate a response.";
+  addMessage(reply,"bot");
+  history.push({role:"assistant",content:reply});
+
+  if(voiceEnabled&&"speechSynthesis" in window){
+   speechSynthesis.cancel();
+   const utterance=new SpeechSynthesisUtterance(reply);
+   utterance.lang="en-IN";
+   speechSynthesis.speak(utterance);
+  }
+ }catch(error){
+  addMessage("Sorry! "+error.message,"bot");
+  history.pop();
+ }finally{
+  send.disabled=false;
+  status.textContent="";
+  input.focus();
+ }
+}
+
+send.addEventListener("click",sendMessage);
+input.addEventListener("keydown",e=>{
+ if(e.key==="Enter")sendMessage();
+});
+
+speak.addEventListener("click",()=>{
+ voiceEnabled=!voiceEnabled;
+ speak.textContent=voiceEnabled?"🔊":"🔇";
+ if(!voiceEnabled&&"speechSynthesis" in window)speechSynthesis.cancel();
+});
+
+const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(SpeechRecognition){
+ const recognition=new SpeechRecognition();
+ recognition.lang="en-IN";
+ recognition.interimResults=false;
+ mic.addEventListener("click",()=>{
+  try{
+   recognition.start();
+   status.textContent="Listening...";
+  }catch(e){
+   status.textContent="Voice recognition is already active.";
+  }
+ });
+ recognition.onresult=e=>{
+  input.value=e.results[0][0].transcript;
+  status.textContent="Voice captured!";
+  sendMessage();
+ };
+ recognition.onerror=()=>status.textContent="Voice recognition unavailable. Try again.";
+ recognition.onend=()=>{if(status.textContent==="Listening...")status.textContent="";};
+}else{
+ mic.addEventListener("click",()=>{
+  status.textContent="Voice input is not supported in this browser.";
+ });
+}
+</script>
+</body>
+</html>
